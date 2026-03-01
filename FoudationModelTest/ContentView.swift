@@ -8,17 +8,28 @@
 import SwiftUI
 
 struct ContentView: View {
+    @EnvironmentObject private var vm: ContentViewModel
+    
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
+        TabView {
+            RecipeGenerator()
+               .environmentObject(vm)
+               .tabItem {
+                   Label("Generate", systemImage: "wand.and.stars")
+               }
+            RecipeList()
+                .environmentObject(vm)
+                .tabItem {
+                    Label("Your recipes", systemImage: "book")
+                }
+
+            
+       }
     }
 }
 
 #Preview {
     ContentView()
+        .environmentObject(ContentViewModel(useMock: true))
+        .frame(width: 400)
 }
