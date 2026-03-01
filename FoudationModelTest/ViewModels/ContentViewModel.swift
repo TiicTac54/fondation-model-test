@@ -18,7 +18,7 @@ struct SavedRecipe: Identifiable, Sendable {
 @MainActor
 class ContentViewModel: ObservableObject {
     @Published var ingredientsInput: String = ""
-    @Published var selectedStyle: String = ""
+    @Published var selectedKind: String = ""
     @Published var isGenerating: Bool = false
     @Published var errorMessage: String? = nil
     @Published var currentRecipeWasSaved: Bool = false
@@ -28,12 +28,13 @@ class ContentViewModel: ObservableObject {
     
     @Published var savedRecipes: [SavedRecipe] = []
 
-    let availableStyles = ["", "Meal", "Dessert", "Breakfast"]
+    let availableKinds = ["", "Meal", "Dessert", "Breakfast"]
 
     // MARK: - Init
     init(useMock: Bool = false) {
         if useMock {
             partiallyGeneratedRecipe = Self.mockRecipe.asPartiallyGenerated()
+            savedRecipes = [.init(recipe: Self.mockRecipe)]
         }
     }
 
@@ -58,14 +59,14 @@ class ContentViewModel: ObservableObject {
             .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
-
-        let styleNote = selectedStyle.isEmpty ? "" : " The recipes should be inspired by \(selectedStyle) cuisine."
+        let kindValue = selectedKind.isEmpty ? "unspecified" : selectedKind
 
         let prompt = """
         You are generating a SAFE cooking recipe.
+        You must respect the kind.
         Use ONLY edible grocery ingredients and normal kitchen steps. You can add your own ingredients. Use as much as possible the provided ingredients.
         Ingredients: \(ingredients.joined(separator: ","))
-        Style: \(styleNote)
+        Kind: \(kindValue)
         Do NOT mention chemicals, drugs, weapons, self-harm, or anything unsafe.
         """
 
@@ -82,6 +83,10 @@ class ContentViewModel: ObservableObject {
         - sodium per serving (mg)
         Optional: fiber and sugar per serving.
 
+        Include a "kind" field with one of: "meal", "dessert", "breakfast", or "unspecified".
+        - If the prompt provides a Kind other than "unspecified", you MUST use that exact value. Do not infer or change it.
+        - Only if the prompt Kind is "unspecified", infer the most appropriate kind from the recipe and set it accordingly.
+        
         If you are unsure, provide your best estimate and keep values reasonable.
         
         When all of steps are done, re-check if all ingredients mentionned in the steps are included. They could be simple as salt. If they are missing add them.
@@ -114,9 +119,11 @@ class ContentViewModel: ObservableObject {
             let name = partial.name?.trimmingCharacters(in: .whitespacesAndNewlines),
             !name.isEmpty,
             let partialIngredients = partial.ingredients, !partialIngredients.isEmpty,
-            let steps = partial.steps, !steps.isEmpty
+            let steps = partial.steps, !steps.isEmpty,
+            let servings = partial.servings,
+            let kind = partial.kind
         else {
-            errorMessage = "Recipe isn’t complete yet — generate until ingredients and steps appear."
+            errorMessage = "Recipe isn’t complete yet — generate until ingredients, steps, and servings appear."
             return
         }
 
@@ -135,40 +142,42 @@ class ContentViewModel: ObservableObject {
             return
         }
 
-        // Convert nutrition (optional)
-        var nutrition: Nutrition? = nil
-        if let n = partial.nutrition {
-            let hasAny =
-                n.totalCalories != nil ||
-                n.caloriesPerServing != nil ||
-                n.proteinGramsPerServing != nil ||
-                n.carbsGramsPerServing != nil ||
-                n.fatGramsPerServing != nil ||
-                n.sodiumMgPerServing != nil ||
-                n.fiberGramsPerServing != nil ||
-                n.sugarGramsPerServing != nil
+        // Convert nutrition (required: all fields must be present)
+        let nutrition: Nutrition
+        if let n = partial.nutrition,
+           let caloriesPerServing = n.caloriesPerServing,
+           let protein = n.proteinGramsPerServing,
+           let carbs = n.carbsGramsPerServing,
+           let fat = n.fatGramsPerServing,
+           let sodium = n.sodiumMgPerServing {
 
-            if hasAny {
-                nutrition = Nutrition(
-                    totalCalories: n.totalCalories,
-                    caloriesPerServing: n.caloriesPerServing,
-                    proteinGramsPerServing: n.proteinGramsPerServing,
-                    carbsGramsPerServing: n.carbsGramsPerServing,
-                    fatGramsPerServing: n.fatGramsPerServing,
-                    sodiumMgPerServing: n.sodiumMgPerServing,
-                    fiberGramsPerServing: n.fiberGramsPerServing,
-                    sugarGramsPerServing: n.sugarGramsPerServing
-                )
-            }
+            let totalCalories = n.totalCalories ?? (caloriesPerServing * servings)
+            let fiber = n.fiberGramsPerServing ?? 0
+            let sugar = n.sugarGramsPerServing ?? 0
+
+            nutrition = Nutrition(
+                totalCalories: totalCalories,
+                caloriesPerServing: caloriesPerServing,
+                proteinGramsPerServing: protein,
+                carbsGramsPerServing: carbs,
+                fatGramsPerServing: fat,
+                sodiumMgPerServing: sodium,
+                fiberGramsPerServing: fiber,
+                sugarGramsPerServing: sugar
+            )
+        } else {
+            errorMessage = "Nutrition isn’t complete yet — wait until calories, protein, carbs, fat, and sodium appear."
+            return
         }
 
-        // Build final Recipe (servings optional)
+        // Build final Recipe
         let final = Recipe(
             name: name,
-            servings: partial.servings!,
-            nutrition: nutrition!,
+            servings: servings,
+            nutrition: nutrition,
             ingredients: ingredients,
-            steps: steps
+            steps: steps,
+            kind: kind
         )
 
         savedRecipes.insert(SavedRecipe(recipe: final), at: 0)
@@ -182,7 +191,7 @@ class ContentViewModel: ObservableObject {
     static let mockRecipe = Recipe(
         name: "Honey Cornflake Crusted Pork",
         servings: 4, nutrition: Nutrition(
-            totalCalories: nil,
+            totalCalories: 4 * 420,
             caloriesPerServing: 420,
             proteinGramsPerServing: 32,
             carbsGramsPerServing: 28,
@@ -200,6 +209,8 @@ class ContentViewModel: ObservableObject {
             "Crush corn flakes in a bowl.",
             "Brush pork with honey and coat with flakes.",
             "Bake 25–30 minutes until golden and cooked through."
-        ]
+        ],
+        kind: .meal
     )
 }
+

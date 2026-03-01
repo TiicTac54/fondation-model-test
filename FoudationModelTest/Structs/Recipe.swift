@@ -18,4 +18,7 @@ struct Recipe: Sendable, Identifiable {
     var nutrition: Nutrition
     var ingredients: [Ingredient]
     var steps: [String]
+    @Guide(description: "The kind of recipe. One of: breakfast, lunch, dinner, snack, dessert")
+    var kind: Kind
 }
+

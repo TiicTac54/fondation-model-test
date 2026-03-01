@@ -59,13 +59,13 @@ struct RecipeGenerator: View {
                             
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 8) {
-                                    ForEach(vm.availableStyles, id: \.self) { style in
+                                    ForEach(vm.availableKinds, id: \.self) { style in
                                         let title = style.isEmpty ? "Any" : style
                                         Chip(
                                             title: title,
-                                            isSelected: vm.selectedStyle == style
+                                            isSelected: vm.selectedKind == style
                                         ) {
-                                            vm.selectedStyle = style
+                                            vm.selectedKind = style
                                             
                                         }
                                     }
